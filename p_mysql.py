@@ -5,7 +5,7 @@ class MySQL:
     __db = None
     # 在这里配置自己的SQL服务器
     __config = {
-        'host':"139.159.250.238",
+        'host':"#",
         'port':3306,
         'username':"root",
         'password':"Xfcctv1983",

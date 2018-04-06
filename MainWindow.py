@@ -5,7 +5,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
 import requests, time, random, json, re
 from bs4 import BeautifulSoup
-import p_mysql
+import p_mysql, traceback
+
 gol_cookies = ''
 
 
@@ -58,7 +59,7 @@ class Ui_MainWindow(object):
         self.groupBox_5 = QtWidgets.QGroupBox(self.centralwidget)
         self.groupBox_5.setGeometry(QtCore.QRect(670, 380, 281, 311))
         self.groupBox_5.setObjectName("groupBox_5")
-        self.dt_listview = QtWidgets.QListView(self.groupBox_5)
+        self.dt_listview = QtWidgets.QListWidget(self.groupBox_5)
         self.dt_listview.setObjectName('dt_listview')
         self.dt_listview.setGeometry((QtCore.QRect(20, 20, 241, 281)))
 
@@ -268,7 +269,7 @@ class Ui_MainWindow(object):
         self.submit_Button.setText(_translate("MainWindow", "Submit"))
         self.groupBox_2.setTitle(_translate("MainWindow", "表格显示"))
         self.groupBox_5.setTitle(_translate("MainWindow", "动态显示"))
-        self.groupBox_3.setTitle(_translate("MainWindow", "结果显示"))
+        self.groupBox_3.setTitle(_translate("MainWindow", "当前期显示"))
         self.dq_qishu.setText(_translate("MainWindow", ""))
         self.label_22.setText(_translate("MainWindow", "投注金额："))
         self.dq_jine.setText(_translate("MainWindow", ""))
@@ -299,8 +300,10 @@ class Ui_MainWindow(object):
         self.label_18.setText(_translate("MainWindow", "上期期数："))
 
     def down_submit_data(self):
-        self.t1 = submit_site()
+        self.t1 = init_data()
         self.t1.up_submit_info.connect(self.up_submit_jm)
+        self.t1.up_dt_info.connect(self.up_dt_listview)
+        self.t1.up_lcd_num.connect(self.up_lcd_num)
         self.t1.jieshou(self.lineEdit_name.text().strip(), self.lineEdit_pwd.text().strip(), '')
         self.t1.start()
         pass
@@ -308,21 +311,84 @@ class Ui_MainWindow(object):
     def up_submit_jm(self, data):
         if data == '登录成功':
             self.submit_Button.setText(data)
-            c_time = time.strftime('%Y-%m-%d', time.localtime(time.time()))
+            c_time = time.strftime('%m-%d %H:%M', time.localtime(time.time()))
             self.user_info.setText("登录时间:" + c_time)
             self.submit_Button.setEnabled(False)
         else:
             self.submit_Button.setText(data)
 
+    def up_dt_listview(self, data):
+        self.dt_listview.addItem(data)
 
-class submit_site(QThread):
+    def up_lcd_num(self, data):
+        self.lcdNumber.display(data)
+
+
+class init_data(QThread):
     """更新数据类"""
     up_submit_info = pyqtSignal(str)
+    up_dt_info = pyqtSignal(str)
+    up_lcd_num = pyqtSignal(int)
 
     def jieshou(self, name, password, vali):
         self.var1 = name
         self.var2 = password
         self.var3 = vali
+
+    def q_curr_period(self):
+        dealy_time = 0
+        header = {"Accept": "application/json, text/javascript, */*",
+                  "Accept-Encoding": "gzip, deflate",
+                  "Accept-Language": "zh-cn",
+                  "Cache-Control": "no-cache",
+                  "Connection": "Keep-Alive",
+                  "Content-Type": "application/x-www-form-urlencoded",
+                  "Host": "www.lezhuan.com",
+                  "Referer": "http://www.lezhuan.com/",
+                  "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)",
+                  "X-Requested-With": "XMLHttpRequest"}
+        url = 'http://www.lezhuan.com/fast/'
+        try:
+            gol_cookies['cGlobal[last]'] = str(int(time.time()))
+            req = requests.get(url, cookies=gol_cookies, headers=header)
+            # print('查询页面时使用的全局cookies', gol_cookies)
+            soup = BeautifulSoup(req.text, 'lxml')
+            # 查询当前投注信息
+            vote_info = soup.find_all('script', attrs={'type': 'text/javascript'})
+            # 第一步 找到当前期 这里必然找出当前期，目的是为了投注。
+            if vote_info != None:
+                try:
+                    temp_a = re.findall(r"parseInt\(\"(.+?)\"\)", vote_info[2].text)
+                    temp_b = re.findall(r"fTimingNO = \"(.+?)\";", vote_info[2].text)
+                    current_period = temp_b[0]
+                    vote_retime = int(temp_a[0])
+                    if vote_retime > 9:
+                        self.up_dt_info.emit('当前期' + current_period + '剩余' + str(vote_retime) + '秒投注')
+                        # print('当前期' + current_period + '剩余' + str(vote_retime) + '秒投注')
+                    else:
+                        self.up_dt_info.emit(str(current_period) + '截止投注')
+                        # print(current_period, '截止投注')
+                except Exception as e:
+                    self.up_dt_info.emit('搜索资料出错，错误信息,%s' % traceback.format_exc())
+            if current_period != '':
+                try:
+                    current_jinbi = (
+                        soup.find('span', attrs={'style': 'padding-left:10px;'}).find_next_sibling(
+                            'span').string).replace(
+                        ',', '')
+                except Exception as e:
+                    self.up_dt_info.emit("查找当前金币错误信息:" + repr(e))
+                    print(repr(e))
+            else:
+                self.up_dt_info.emit("当前期都没找到，继续延时30秒查找")
+            dealy_time = vote_retime + 28
+            self.up_dt_info.emit('延时%s刷新' % dealy_time)
+            for m in range(dealy_time, -1, -1):
+                self.up_lcd_num.emit(m)
+                time.sleep(1)
+        except Exception as e:
+            print('访问网站出错，等待10秒，重新访问', repr(e))
+            time.sleep(5)
 
     def run(self):
         global gol_cookies
@@ -350,19 +416,28 @@ class submit_site(QThread):
             time.sleep(0.1)
             req1 = requests.post(url, data=sub_ajax, headers=post_head, cookies=req.cookies, allow_redirects=False)
             if json.loads(req1.text)['error'] == '10000':
-                print('登录成功')
+                # print('登录成功')
+                self.up_dt_info.emit('登录成功')
                 gol_cookies = req1.cookies
                 cj_dict = requests.utils.dict_from_cookiejar(gol_cookies)
                 cj_dict['cGlobal[last]'] = str(int(time.time()))
                 gol_cookies = requests.utils.cookiejar_from_dict(cj_dict, cookiejar=None, overwrite=True)
                 # 开始循环了,NO，应该先更新个人信息，并显示出来，而且要把前面的输入框给禁止
                 self.up_submit_info.emit("登录成功")
-
+                mydb = p_mysql.MySQL()
+                # 查询数据库最后一期，然后显示出来
+                sql_text = "select period from js28 ORDER BY period"
+                self.q_curr_period()
             else:
                 self.up_submit_info.emit("登录失败")
                 pass
         except Exception as e:
             print(repr(e))
+
+
+class up_xinxi(QThread):
+    def run(self):
+        pass
 
 
 if __name__ == '__main__':

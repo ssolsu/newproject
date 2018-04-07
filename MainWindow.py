@@ -54,8 +54,21 @@ class Ui_MainWindow(object):
         self.tableWidget = QtWidgets.QTableWidget(self.groupBox_2)
         self.tableWidget.setGeometry(QtCore.QRect(10, 20, 631, 281))
         self.tableWidget.setObjectName("tableWidget")
-        self.tableWidget.setColumnCount(0)
-        self.tableWidget.setRowCount(0)
+        self.tableWidget.setColumnCount(4)
+        self.tableWidget.setRowCount(8)
+        column_name = [
+            '期数',
+            '时间',
+            '开奖号码',
+            '开奖结果',
+        ]
+        self.tableWidget.setHorizontalHeaderLabels(column_name)
+        self.tableWidget.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.tableWidget.verticalHeader().setVisible(False)
+        self.tableWidget.setColumnWidth(0, 150)
+        self.tableWidget.setColumnWidth(1, 150)
+        self.tableWidget.setColumnWidth(2, 150)
+        self.tableWidget.setColumnWidth(3, 150)
         # ----
         self.groupBox_5 = QtWidgets.QGroupBox(self.centralwidget)
         self.groupBox_5.setGeometry(QtCore.QRect(670, 380, 281, 311))
@@ -281,23 +294,23 @@ class Ui_MainWindow(object):
         self.lable11.setText(_translate("MainWindow", "当前收益："))
         self.shouyi.setText(_translate("MainWindow", ""))
         self.label_24.setText(_translate("MainWindow", "投注模式："))
-        self.dq_moshi.setText(_translate("MainWindow", "真实"))
+        self.dq_moshi.setText(_translate("MainWindow", ""))
         self.label_20.setText(_translate("MainWindow", "投注大小："))
-        self.dq_daxiao.setText(_translate("MainWindow", "大"))
+        self.dq_daxiao.setText(_translate("MainWindow", ""))
         self.label_19.setText(_translate("MainWindow", "刷新倒计时："))
         self.label_3.setText(_translate("MainWindow", "当前期数："))
         self.groupBox_4.setTitle(_translate("MainWindow", "上期结果显示"))
         self.label_16.setText(_translate("MainWindow", "上期结果："))
         self.label_12.setText(_translate("MainWindow", "投注基数："))
-        self.sq_jishu.setText(_translate("MainWindow", "10"))
-        self.sq_jine.setText(_translate("MainWindow", "01234567"))
-        self.sq_qishu.setText(_translate("MainWindow", "1063590"))
+        self.sq_jishu.setText(_translate("MainWindow", ""))
+        self.sq_jine.setText(_translate("MainWindow", ""))
+        self.sq_qishu.setText(_translate("MainWindow", ""))
         self.label_26.setText(_translate("MainWindow", "投注金额："))
-        self.sq_jieguo.setText(_translate("MainWindow", "1000000000"))
-        self.label_28.setText(_translate("MainWindow", "投注大小："))
-        self.sq_daxiao.setText(_translate("MainWindow", "大"))
+        self.sq_jieguo.setText(_translate("MainWindow", ""))
+        self.label_28.setText(_translate("MainWindow", "是否正确："))
+        self.sq_daxiao.setText(_translate("MainWindow", ""))
         self.label_30.setText(_translate("MainWindow", "投注模式："))
-        self.sq_moshi.setText(_translate("MainWindow", "真实"))
+        self.sq_moshi.setText(_translate("MainWindow", ""))
         self.label_18.setText(_translate("MainWindow", "上期期数："))
 
     def down_submit_data(self):
@@ -331,13 +344,23 @@ class Ui_MainWindow(object):
         self.dq_jishu.setText(str(data[2]))
         self.lxcw.setText(str(data[3]))
         self.shouyi.setText(str(data[4]))
-        if data[5]==0:
-            x='真实'
+        if data[5] == 0:
+            x = '真实'
         else:
-            x='模拟'
+            x = '模拟'
         self.dq_moshi.setText(str(x))
         self.dq_daxiao.setText(str(data[6]))
 
+    def up_lastvote_info(self, data):
+        self.sq_qishu.setText(str(data[0]))
+        self.sq_jine.setText(str(data[1]))
+        self.sq_jishu.setText(str(data[2]))
+        self.sq_jieguo.setText(str(data[3]))
+        self.sq_daxiao.setText(str(data[4]))
+        self.sq_moshi.setText(str(data[5]))
+        pass
+    def up_table_info(self,data):
+        pass
 
 class init_data(QThread):
     """更新数据类"""
@@ -345,6 +368,7 @@ class init_data(QThread):
     up_dt_info = pyqtSignal(str)
     up_lcd_num = pyqtSignal(int)
     up_curinfo = pyqtSignal(tuple)
+    up_lastinfo=pyqtSignal(tuple)
 
     def jieshou(self, name, password, vali):
         self.var1 = name
@@ -400,6 +424,7 @@ class init_data(QThread):
                         self.up_dt_info.emit('搜索javascrpt出错，错误信息,%s' % traceback.format_exc())
                 if current_period != '':
                     # 循环采集部分
+
                     mydb = p_mysql.MySQL()
                     # 查询数据库最后一期，然后显示出来
                     sql_text = "select period from js28 ORDER BY period DESC limit 1"
@@ -426,7 +451,8 @@ class init_data(QThread):
                                     period = res[0].text
                                     vote_time = res[1].text
                                     jcjg = re.findall(r'\d+', str(res[2].find_all('img')[-1]))[0]
-                                    print(period, vote_time, jcjg)
+                                    # print(period, vote_time, jcjg)
+
                                     sql = "insert into js28 values ('" + period + "','" + vote_time + "','" + str(
                                         jcjg) + "')"
                                     mydb.query(sql)
@@ -437,6 +463,7 @@ class init_data(QThread):
                             x = x - 1
                             if x <= 0:
                                 x = 1
+
                     self.up_dt_info.emit("采集完成")
                     # 每一次，必须采集完成后，才开始从数据库中拿数据判断
                     if vote_list:  # 如果不为空，说明上一次投注了，判断是否正确。
@@ -445,9 +472,11 @@ class init_data(QThread):
                             sql = "select * from js28 where period='" + str(vote_period) + "' limit 1"
                             redata = mydb.query(sql)
                             last_vote = redata[0][2]
-                            print('返回列表', vote_list, '查找返回投注期的结果', last_vote[0])
+                            # print('返回列表', vote_list, '查找返回投注期的结果', last_vote[0])
+                            self.up_dt_info.emit('上期投注列表'+str(vote_list))
                             if int(last_vote[0]) in vote_list:
                                 print('投注正确,倍率清空')
+                                self.up_lastinfo.emit(vote_period, '', '', last_vote, '正确', '')
                                 wrong = 0
                                 if wrongflag == True and moni == 1:
                                     wrongflag = False
@@ -455,14 +484,16 @@ class init_data(QThread):
                                     jishu = 0
                                     moni = 0
                             else:
+                                self.up_lastinfo.emit(vote_period, '', '', last_vote, '错误', '')
                                 if int(last_vote[0]) > 0:
-                                    print('投注错误,次数加 1 ,错误次数：', wrong)
+                                    # print('投注错误,次数加 1 ,错误次数：', wrong)
                                     wrong = wrong + 1
                                     if wrong >= maxwrong:
                                         wrongflag = True
                                         moni = 1
+
                         except Exception as e:
-                            print(repr(e))
+                            self.up_dt_info.emit("查询已投注的结果错误" + repr(e))
                             # ---------------------------------------------------
                     s1 = str(int(current_period) - 1)
                     s2 = str(int(current_period) - 2)
@@ -489,25 +520,17 @@ class init_data(QThread):
                                 jishu = 0
                         print('lezhuan,最大错:', maxwrong, '当前错误', wrong, "金币：", '倍数', yinshu, '模拟', moni, '投注次数', jishu,
                               '错标', wrongflag, '偷发育', toufayu)
-
-                        # self.dq_qishu.setText(data[0])
-                        # self.dq_jine.setText(data[1])
-                        # self.dq_jishu.setText(data[2])
-                        # self.lxcw.setText(data[3])
-                        # self.shouyi.setText(data[4])
-                        # self.dq_moshi.setText(data[5])
-                        # self.dq_daxiao.setText(data[6])
                         list_v = daxiao_1(last_1, last_2, last_3, last_4, multiple[wrong], yinshu)
                     if list_v:
                         vote_list = vote_thing(current_period, list_v)
-                        if int(vote_list[0])<10:
-                            dd='小'
+                        if int(vote_list[0]) < 10:
+                            dd = '小'
                         else:
-                            dd='大'
-                        self.up_curinfo.emit((current_period, multiple[wrong] * yinshu, yinshu, wrong, 0, moni,dd ))
+                            dd = '大'
+                        self.up_curinfo.emit((current_period, multiple[wrong] * yinshu, yinshu, wrong, 0, moni, dd))
                     else:
                         vote_list = []
-                        self.up_curinfo.emit((current_period, '', '','', '', moni, ''))
+                        self.up_curinfo.emit((current_period, '', '', '', '', moni, ''))
                     del mydb
                     dealy_time = vote_retime + 28
                     self.up_dt_info.emit('延时%s刷新' % dealy_time)

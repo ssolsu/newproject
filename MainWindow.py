@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 
-import sys
+import sys,os
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
 import requests, time, random, json, re
 from bs4 import BeautifulSoup
 import p_mysql, traceback
-
+fpath = os.getcwd()
+sys.path.append(fpath)
 gol_cookies = ''
 moni = 1
 
@@ -565,7 +566,7 @@ class init_data(QThread):
             # Post数据服务器
             req = requests.post(url, data=pst_ajax, headers=post_head, allow_redirects=False)
             sub_ajax = {'act': 'login', 'key': rankey, 'url': 'http://www.lezhuan.com/',
-                        'tbUserAccount': 'ssolsu1@126.com', 'tbUserPwd': 'xfcctv1983',
+                        'tbUserAccount': self.var1, 'tbUserPwd': 'xfcctv1983',
                         'token': json.loads(req.text)['token']}
             time.sleep(0.1)
             req1 = requests.post(url, data=sub_ajax, headers=post_head, cookies=req.cookies, allow_redirects=False)

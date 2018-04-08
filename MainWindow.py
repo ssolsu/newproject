@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 
-import sys,os
+import sys, os
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
 import requests, time, random, json, re
 from bs4 import BeautifulSoup
-import p_mysql, traceback
+import p_mysql, traceback, configparser
+
 fpath = os.getcwd()
 sys.path.append(fpath)
 gol_cookies = ''
@@ -49,6 +50,7 @@ class Ui_MainWindow(object):
         self.submit_Button.setObjectName("submit_Button")
         self.submit_Button.clicked.connect(self.down_submit_data)
         self.gridLayout.addWidget(self.submit_Button, 1, 1, 1, 5)
+
         self.groupBox_2 = QtWidgets.QGroupBox(self.centralwidget)
         self.groupBox_2.setGeometry(QtCore.QRect(10, 380, 651, 311))
         self.groupBox_2.setObjectName("groupBox_2")
@@ -288,7 +290,7 @@ class Ui_MainWindow(object):
         self.dq_qishu.setText(_translate("MainWindow", ""))
         self.label_22.setText(_translate("MainWindow", "投注金额："))
         self.dq_jine.setText(_translate("MainWindow", ""))
-        self.label_5.setText(_translate("MainWindow", "投注基数："))
+        self.label_5.setText(_translate("MainWindow", "投注计次："))
         self.dq_jishu.setText(_translate("MainWindow", ""))
         self.label_7.setText(_translate("MainWindow", "连续错误："))
         self.lxcw.setText(_translate("MainWindow", ""))
@@ -320,6 +322,9 @@ class Ui_MainWindow(object):
         self.t1.up_dt_info.connect(self.up_dt_listview)
         self.t1.up_lcd_num.connect(self.up_lcd_num)
         self.t1.up_curinfo.connect(self.up_curr_info)
+        self.t1.up_lastinfo.connect(self.up_lastvote_info)
+        self.t1.up_statusinfo.connect(self.up_status_info)
+        self.t1.up_table_info.connect(self.up_table_info)
         self.t1.jieshou(self.lineEdit_name.text().strip(), self.lineEdit_pwd.text().strip(), '')
         self.t1.start()
         pass
@@ -360,8 +365,28 @@ class Ui_MainWindow(object):
         self.sq_daxiao.setText(str(data[4]))
         self.sq_moshi.setText(str(data[5]))
         pass
-    def up_table_info(self,data):
+
+    def up_table_info(self, data):
+        self.tableWidget.clearContents()
+        self.tableWidget.setRowCount(0)
+        soup=BeautifulSoup(data,'lxml')
+        for y in soup.find_all('tr'):
+            if str(y).find('已结束') > 0:
+                dqhs = self.tableWidget.rowCount()
+                self.tableWidget.insertRow(dqhs)
+                res = y.find_all('td')
+                period = res[0].text
+                vote_time = res[1].text
+                jcjg = re.findall(r'\d+', str(res[2].find_all('img')[-1]))[0]
+                self.tableWidget.setItem(dqhs, 0, QtWidgets.QTableWidgetItem(period))
+                self.tableWidget.setItem(dqhs, 1, QtWidgets.QTableWidgetItem(vote_time))
+                self.tableWidget.setItem(dqhs, 2, QtWidgets.QTableWidgetItem(str(jcjg)))
         pass
+
+    def up_status_info(self, data):
+        self.statusbar.showMessage(data)
+        pass
+
 
 class init_data(QThread):
     """更新数据类"""
@@ -369,18 +394,61 @@ class init_data(QThread):
     up_dt_info = pyqtSignal(str)
     up_lcd_num = pyqtSignal(int)
     up_curinfo = pyqtSignal(tuple)
-    up_lastinfo=pyqtSignal(tuple)
+    up_lastinfo = pyqtSignal(tuple)
+    up_statusinfo = pyqtSignal(str)
+    up_table_info=pyqtSignal(str)
 
     def jieshou(self, name, password, vali):
         self.var1 = name
         self.var2 = password
         self.var3 = vali
 
+    def remaxwrong(self):
+        maxdb = p_mysql.MySQL()
+        sql = 'select * from js28 order by period DESC  limit 300'
+        result_list = maxdb.query(sql)
+        xwrong = 0
+        retperiod = 0
+        for index, x in enumerate(result_list[:-5]):
+            # 当前期结果为
+            current_result = x[2]
+            current_period = x[0]
+            s1 = int(result_list[index + 1][2])
+            s2 = int(result_list[index + 2][2])
+            s3 = int(result_list[index + 3][2])
+            s4 = int(result_list[index + 4][2])
+            s5 = int(result_list[index + 5][2])
+            # print(current_period, s1, s2, s3, s4, s5)
+            if s1 < 14:
+                vode_dx = 0
+                if s2 > 13 :
+                    vode_dx = 1
+            else:
+                vode_dx = 1
+                if s2 < 14 :
+                    vode_dx = 0
+            if vode_dx == 0 and int(current_result) < 14:
+                xwrong = 0
+            if vode_dx == 0 and int(current_result) > 13:
+                xwrong = xwrong + 1
+            if vode_dx == 1 and int(current_result) > 13:
+                xwrong = 0
+            if vode_dx == 1 and int(current_result) < 14:
+                xwrong = xwrong + 1
+            if xwrong == 6:
+                retperiod = result_list[index][0]
+                del maxdb
+                return retperiod
+        del maxdb
+        return retperiod
+
     def q_curr_period(self):
+        first_run = 0
         jishu = 0
         multiple = [1, 3, 7, 15, 31, 63, 127, 34, 55, 89, 144, 1, 1]
-        maxwrong = 7
+        maxwrong = 6
         global moni
+        firstflag_vote = ''
         current_period = ''
         vote_retime = 0
         endf = 1
@@ -424,8 +492,39 @@ class init_data(QThread):
                     except Exception as e:
                         self.up_dt_info.emit('搜索javascrpt出错，错误信息,%s' % traceback.format_exc())
                 if current_period != '':
+                    # 添加保存第一次金币部分
+                    self.up_table_info.emit(req.text)
+                    try:
+                        current_jinbi = (
+                            soup.find('span', attrs={'style': 'padding-left:10px;'}).find_next_sibling(
+                                'span').string).replace(
+                            ',', '')
+                    except Exception as e:
+                        print(repr(e))
+                    if firstflag_vote == '':
+                        firstflag_vote = current_period
+                        firstflag_jinbi = current_jinbi
+                        config = configparser.ConfigParser()
+                        config.read("Config_lezhuan.ini")
+                        config_title = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+                        try:
+                            config.add_section(config_title)
+                            config.set(config_title, "starttime：", config_title)
+                            config.set(config_title, "firstvote：", firstflag_vote)
+                            config.set(config_title, "firstjinbi", firstflag_jinbi)
+                            config.write(open("Config_lezhuan.ini", "w"))
+                            tempa = config.sections()
+                            newa = []
+                            findtime = time.strftime('%Y-%m-%d', time.localtime(time.time()))
+                            # print(findtime)
+                            for x in tempa:
+                                # print(x.find(findtime))
+                                if x.find(findtime) >= 0:
+                                    newa.append(x)
+                            todayfirstjinbi = int(config.get(newa[0], 'firstjinbi'))
+                        except configparser.DuplicateSectionError:
+                            print("Section already exists")
                     # 循环采集部分
-
                     mydb = p_mysql.MySQL()
                     # 查询数据库最后一期，然后显示出来
                     sql_text = "select period from js28 ORDER BY period DESC limit 1"
@@ -453,7 +552,6 @@ class init_data(QThread):
                                     vote_time = res[1].text
                                     jcjg = re.findall(r'\d+', str(res[2].find_all('img')[-1]))[0]
                                     # print(period, vote_time, jcjg)
-
                                     sql = "insert into js28 values ('" + period + "','" + vote_time + "','" + str(
                                         jcjg) + "')"
                                     mydb.query(sql)
@@ -466,18 +564,24 @@ class init_data(QThread):
                                 x = 1
 
                     self.up_dt_info.emit("采集完成")
+                    if first_run == 0:
+                        self.up_dt_info.emit('先搜索最近的一次错6')
+                        remax = self.remaxwrong()
+                        first_run = 1
+                        self.up_statusinfo.emit('第一次查询错六为： ' + str(remax) + " 期")
+                        self.up_dt_info.emit('搜索结束')
                     # 每一次，必须采集完成后，才开始从数据库中拿数据判断
                     if vote_list:  # 如果不为空，说明上一次投注了，判断是否正确。
                         try:
-                            vote_period = vote_list[-1]
-                            sql = "select * from js28 where period='" + str(vote_period) + "' limit 1"
+                            vote_period = str(vote_list[-1]).strip()
+                            sql = "select * from js28 where period='" + vote_period + "' limit 1"
                             redata = mydb.query(sql)
                             last_vote = redata[0][2]
                             # print('返回列表', vote_list, '查找返回投注期的结果', last_vote[0])
-                            self.up_dt_info.emit('上期投注列表'+str(vote_list))
-                            if int(last_vote[0]) in vote_list:
+                            self.up_dt_info.emit('上期投注列表' + str(vote_list))
+                            if int(last_vote) in vote_list:
                                 print('投注正确,倍率清空')
-                                self.up_lastinfo.emit(vote_period, '', '', last_vote, '正确', '')
+                                self.up_lastinfo.emit((vote_period, '', '', last_vote, '正确', ''))
                                 wrong = 0
                                 if wrongflag == True and moni == 1:
                                     wrongflag = False
@@ -485,16 +589,15 @@ class init_data(QThread):
                                     jishu = 0
                                     moni = 0
                             else:
-                                self.up_lastinfo.emit(vote_period, '', '', last_vote, '错误', '')
-                                if int(last_vote[0]) > 0:
+                                self.up_lastinfo.emit((vote_period, '', '', last_vote, '错误', ''))
+                                if int(last_vote) > 0:
                                     # print('投注错误,次数加 1 ,错误次数：', wrong)
                                     wrong = wrong + 1
                                     if wrong >= maxwrong:
                                         wrongflag = True
                                         moni = 1
-
                         except Exception as e:
-                            self.up_dt_info.emit("查询已投注的结果错误" + repr(e))
+                            self.up_dt_info.emit("查询已投注的结果错误:%s" % traceback.format_exc())
                             # ---------------------------------------------------
                     s1 = str(int(current_period) - 1)
                     s2 = str(int(current_period) - 2)
@@ -511,7 +614,7 @@ class init_data(QThread):
                     print(last_1, last_2, last_3, last_4)
                     if vote_retime > 9:
                         if moni == 0:
-                            if jishu >= 5 and wrong == 1:
+                            if jishu >= 5 and wrong == 0:
                                 toufayu = False
                             if toufayu == True:
                                 yinshu = 10
@@ -528,7 +631,8 @@ class init_data(QThread):
                             dd = '小'
                         else:
                             dd = '大'
-                        self.up_curinfo.emit((current_period, multiple[wrong] * yinshu, yinshu, wrong, 0, moni, dd))
+                        self.up_curinfo.emit((current_period, multiple[wrong] * yinshu * 500, jishu, wrong,
+                                              int(current_jinbi) - todayfirstjinbi, moni, dd))
                     else:
                         vote_list = []
                         self.up_curinfo.emit((current_period, '', '', '', '', moni, ''))

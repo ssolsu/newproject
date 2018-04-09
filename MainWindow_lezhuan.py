@@ -405,7 +405,7 @@ class init_data(QThread):
 
     def remaxwrong(self):
         maxdb = p_mysql.MySQL()
-        sql = 'select * from js28 order by period DESC  limit 300'
+        sql = 'select * from le_js28 order by period DESC  limit 300'
         result_list = maxdb.query(sql)
         xwrong = 0
         retperiod = 0
@@ -452,11 +452,10 @@ class init_data(QThread):
         current_period = ''
         vote_retime = 0
         endf = 1
-        yinshu = 2
-        toufayu = False
         wrong = 0
         wrongflag = False
         vote_list = []
+        toufayu=False
         self.header = {"Accept": "application/json, text/javascript, */*",
                        "Accept-Encoding": "gzip, deflate",
                        "Accept-Language": "zh-cn",
@@ -469,6 +468,7 @@ class init_data(QThread):
                        "X-Requested-With": "XMLHttpRequest"}
         self.url = 'http://www.lezhuan.com/fast/'
         while True:
+            yinshu = 2
             list_v = []
             c_time = time.strftime('%m-%d %H:%M', time.localtime(time.time()))
             try:
@@ -527,7 +527,7 @@ class init_data(QThread):
                     # 循环采集部分
                     mydb = p_mysql.MySQL()
                     # 查询数据库最后一期，然后显示出来
-                    sql_text = "select period from js28 ORDER BY period DESC limit 1"
+                    sql_text = "select period from le_js28 ORDER BY period DESC limit 1"
                     sql_re = mydb.query(sql_text)
                     if len(sql_re) <= 0:
                         endf = 67
@@ -538,6 +538,7 @@ class init_data(QThread):
                     self.up_dt_info.emit("需采集" + str(endf) + "页数")
                     x = 1
                     while x <= endf:
+                        self.up_dt_info.emit("开始采集，第" + str(x) + "页")
                         pdata = {'p': x}
                         try:
                             if x == 1:
@@ -552,7 +553,7 @@ class init_data(QThread):
                                     vote_time = res[1].text
                                     jcjg = re.findall(r'\d+', str(res[2].find_all('img')[-1]))[0]
                                     # print(period, vote_time, jcjg)
-                                    sql = "insert into js28 values ('" + period + "','" + vote_time + "','" + str(
+                                    sql = "insert into le_js28 values ('" + period + "','" + vote_time + "','" + str(
                                         jcjg) + "')"
                                     mydb.query(sql)
                             time.sleep(0.5)
@@ -574,7 +575,7 @@ class init_data(QThread):
                     if vote_list:  # 如果不为空，说明上一次投注了，判断是否正确。
                         try:
                             vote_period = str(vote_list[-1]).strip()
-                            sql = "select * from js28 where period='" + vote_period + "' limit 1"
+                            sql = "select * from le_js28 where period='" + vote_period + "' limit 1"
                             redata = mydb.query(sql)
                             last_vote = redata[0][2]
                             # print('返回列表', vote_list, '查找返回投注期的结果', last_vote[0])
@@ -603,7 +604,7 @@ class init_data(QThread):
                     s2 = str(int(current_period) - 2)
                     s3 = str(int(current_period) - 3)
                     s4 = str(int(current_period) - 4)
-                    sql = "select * from js28 where period='" + s1 + "' or period='" + s2 + "' or period='" + s3 + "' or period='" + s4 + "' order by period DESC"
+                    sql = "select * from le_js28 where period='" + s1 + "' or period='" + s2 + "' or period='" + s3 + "' or period='" + s4 + "' order by period DESC"
                     # print(sql)
                     redata_1 = mydb.query(sql)
                     print(redata_1)

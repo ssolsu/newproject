@@ -444,6 +444,7 @@ class Ui_MainWindow(object):
             if vode_dx == 1 and dqjg < 14:
                 xwrong = xwrong + 1
         firstwrong=xwrong
+        print('firstwrong',firstwrong)
 
     def up_status_info(self, data):
         self.statusbar.showMessage(data)
@@ -521,10 +522,7 @@ class init_data(QThread):
         endf = 1
         wrongflag = False
         vote_list = []
-        if moni==1:
-            wrong=firstwrong
-        else:
-            wrong=0
+
         self.header = {"Accept": "text/html, application/xhtml+xml, */*",
                        "Accept-Encoding": "gzip, deflate",
                        "Accept-Language": "zh-CN",
@@ -544,7 +542,7 @@ class init_data(QThread):
                      "X-Requested-With": "XMLHttpRequest"}
         self.url = 'http://www.juxiangyou.com/fun/play/crazy28/index'
         while True:
-            yinshu = 2
+            yinshu = 1
             list_v = []
             c_time = time.strftime('%m-%d %H:%M', time.localtime(time.time()))
             try:
@@ -577,6 +575,7 @@ class init_data(QThread):
                 if current_period != '':
                     # 添加保存第一次金币部分
                     self.up_table_info.emit(req.text)
+
                     try:
                         current_jinbi = (soup.find('span', attrs={'class': 'J_udou'}).string).replace(',', '')
                     except Exception as e:
@@ -654,9 +653,13 @@ class init_data(QThread):
                             if w <= 0:
                                 w = 1
                     self.up_dt_info.emit("采集完成")
+                    if moni == 1 and first_run == 0:
+                        wrong = firstwrong
                     if first_run == 0:
                         self.up_dt_info.emit('先搜索最近的一次错6')
                         remax = self.remaxwrong()
+                        if int(current_period)-int(remax)<=30:
+                            moni=0
                         first_run = 1
                         self.up_statusinfo.emit('第一次查询错六为： ' + str(remax) + " 期")
                         self.up_dt_info.emit('搜索结束')
@@ -704,12 +707,12 @@ class init_data(QThread):
                     print(last_1, last_2, last_3, last_4)
                     if vote_retime > 9:
                         if moni == 0:
-                            if jishu >= 5 and wrong == 0:
+                            if jishu >= 6 and wrong == 0:
                                 toufayu = False
                             if toufayu == True:
                                 yinshu = 10
                             jishu = jishu + 1
-                            if jishu >= 120:
+                            if jishu >= 300 and wrong<=2:
                                 moni = 1
                                 jishu = 0
                         # print('lezhuan,最大错:', maxwrong, '当前错误', wrong, "金币：", '倍数', yinshu, '模拟', moni, '投注次数', jishu,

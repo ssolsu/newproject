@@ -620,7 +620,7 @@ class init_data(QThread):
                             if toufayu == True:
                                 yinshu = 10
                             jishu = jishu + 1
-                            if jishu >= 120:
+                            if jishu >= 220 and wrong<=2:
                                 moni = 1
                                 jishu = 0
                         print('lezhuan,最大错:', maxwrong, '当前错误', wrong, "金币：", '倍数', yinshu, '模拟', moni, '投注次数', jishu,

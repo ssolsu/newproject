@@ -5,7 +5,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
 import requests, time, random, json, re
 from bs4 import BeautifulSoup
-import p_mysql, traceback, configparser
+import p_mysql, traceback, configparser,chardet
 
 fpath = os.getcwd()
 sys.path.append(fpath)
@@ -512,7 +512,7 @@ class init_data(QThread):
                        "Host": "www.youzhuan.com",
                        "Referer": "www.youzhuan.com",
                        "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64;Trident/5.0)"}
-        self.url = 'http://www.youzhuan.com/jc/js.php?p=1'
+        self.url = 'http://www.youzhuan.com/jc/js.php'
         while True:
             yinshu = 1
             list_v = []
@@ -520,8 +520,10 @@ class init_data(QThread):
             try:
                 gol_cookies['cGlobal[last]'] = str(int(time.time()))
                 req = requests.get(self.url, cookies=gol_cookies, headers=self.header)
+                html=req.text.encode('ISO-8859-1').decode(requests.utils.get_encodings_from_content(req.text)[0])
+                # print(html)
                 # print('查询页面时使用的全局cookies', gol_cookies)
-                soup = BeautifulSoup(req.text, 'lxml')
+                soup = BeautifulSoup(html, 'lxml')
                 # 查询当前投注信息
                 vote_info = soup.find_all('script', attrs={'type': 'text/javascript'})
                 # 第一步 找到当前期 这里必然找出当前期，目的是为了投注。
@@ -539,7 +541,6 @@ class init_data(QThread):
                         self.up_dt_info.emit('搜索javascrpt出错，错误信息,%s' % traceback.format_exc())
                 if current_period != '':
                     # 添加保存第一次金币部分
-                    self.up_table_info.emit(req.text)
                     try:
                         current_jinbi = (soup.find('span', attrs={'class': 'org'}).string).replace(',', '')
                     except Exception as e:
@@ -572,6 +573,7 @@ class init_data(QThread):
                     # 查询数据库最后一期，然后显示出来
                     sql_text = "select period from yz_js28 ORDER BY period DESC limit 1"
                     sql_re = mydb.query(sql_text)
+                    print(current_period,sql_re[0][0])
                     if len(sql_re) <= 0:
                         endf = 67
                     else:
@@ -579,16 +581,18 @@ class init_data(QThread):
                         if endf >= 67:
                             endf = 67
                     self.up_dt_info.emit("需采集" + str(endf) + "页数")
-                    x = 1
-                    while x <= endf:
-                        self.up_dt_info.emit("开始采集，第" + str(x) + "页")
-                        pdata = {'p': x}
+                    w = 1
+                    while w <= endf:
+                        self.up_dt_info.emit("开始采集，第" + str(w) + "页")
+                        pdata = {'p': w}
                         try:
-                            if x == 1:
+                            if w == 1:
                                 req_one = req
                             else:
                                 req_one = requests.get(self.url, cookies=gol_cookies, headers=self.header, params=pdata)
-                            soup = BeautifulSoup(req_one.text, 'lxml')
+                            print()
+                            html_1=req_one.text.encode('ISO-8859-1').decode(requests.utils.get_encodings_from_content(req.text)[0])
+                            soup = BeautifulSoup(html_1, 'lxml')
                             for y in soup.find_all('tr'):
                                 if str(y).find('已开奖') > 0:
                                     res = y.find_all('td')
@@ -598,18 +602,23 @@ class init_data(QThread):
                                     sql = "insert into yz_js28 values ('" + period + "','" + vote_time + "','" + str(
                                         jcjg) + "')"
                                     mydb.query(sql)
-                            time.sleep(0.5)
-                            x = x + 1
+                            time.sleep(0.1)
+                            w = w + 1
                         except Exception as e:
                             self.up_dt_info.emit("采集过程中，页面信息问题，重新采集该页")
-                            x = x - 1
-                            if x <= 0:
-                                x = 1
+                            w = w - 1
+                            if w <= 0:
+                                w = 1
 
                     self.up_dt_info.emit("采集完成")
-                    if first_run == 0:
+                    self.up_table_info.emit(html)
+                    if first_run==0 and moni==1:
+                        wrong = firstwrong
+                    if first_run == 0 :
                         self.up_dt_info.emit('先搜索最近的一次错6')
                         remax = self.remaxwrong()
+                        if int(current_period)-int(remax)<=30:
+                            moni=0
                         first_run = 1
                         self.up_statusinfo.emit('第一次查询错六为： ' + str(remax) + " 期")
                         self.up_dt_info.emit('搜索结束')
@@ -649,12 +658,13 @@ class init_data(QThread):
                     sql = "select * from yz_js28 where period='" + s1 + "' or period='" + s2 + "' or period='" + s3 + "' or period='" + s4 + "' order by period DESC"
                     # print(sql)
                     redata_1 = mydb.query(sql)
-                    print(redata_1)
+                    # print(redata_1)
+                    # print(redata_1)
                     last_1 = redata_1[0][2]
                     last_2 = redata_1[1][2]
                     last_3 = redata_1[2][2]
                     last_4 = redata_1[3][2]
-                    print(last_1, last_2, last_3, last_4)
+                    # print(last_1, last_2, last_3, last_4)
                     if vote_retime > 9:
                         if moni == 0:
                             if jishu >= 5 and wrong == 0:
@@ -669,13 +679,16 @@ class init_data(QThread):
                               '错标', wrongflag, '偷发育', toufayu)
                         list_v = daxiao_1(last_1, last_2, last_3, last_4, multiple[wrong], yinshu)
                     if list_v:
-                        # vote_list = vote_thing(current_period, list_v)
-                        if int(vote_list[0]) < 10:
-                            dd = '小'
+                        vote_list = vote_thing(current_period, list_v)
+                        if vote_list:
+                            if int(vote_list[0]) < 10:
+                                dd = '小'
+                            else:
+                                dd = '大'
+                            self.up_curinfo.emit((current_period, multiple[wrong] * yinshu * 500, jishu, wrong,
+                                                  int(current_jinbi) - todayfirstjinbi, moni, dd))
                         else:
-                            dd = '大'
-                        self.up_curinfo.emit((current_period, multiple[wrong] * yinshu * 500, jishu, wrong,
-                                              int(current_jinbi) - todayfirstjinbi, moni, dd))
+                            self.up_dt_info.emit(str(current_period)+"投注失败")
                     else:
                         vote_list = []
                         self.up_curinfo.emit((current_period, '', '', '', '', moni, ''))
@@ -767,56 +780,76 @@ def daxiao_1(s1, s2, s3, s4, multiple, bt):
 
 
 def vote_thing(vote_current, list_v):  # 负责投注的函数
+    global jishu
     global moni
+    global xxx
     return_list = []
     list_num = [1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 63, 69, 73, 75, 75, 73, 69, 63, 55, 45, 36, 28, 21, 15, 10, 6, 3,
                 1]
-    base_time = int(time.time()) * 1000
-    x_sign = baseN(base_time, 36)
-    post_head = {"Accept": "application/json, text/javascript, */*; q=0.01",
+    get_head = {"Accept": "text/html, application/xhtml+xml, */*",
+                "Accept-Encoding": "gzip, deflate",
+                "Accept-Language": "zh-cn",
+                "Connection": "Keep-Alive",
+                "Host": "www.youzhuan.com",
+                "Referer": "www.youzhuan.com",
+                "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)"
+                }
+    post_head = {"Accept": "text/html, application/xhtml+xml, */*",
                  "Accept-Encoding": "gzip, deflate",
                  "Accept-Language": "zh-cn",
                  "Cache-Control": "no-cache",
                  "Connection": "Keep-Alive",
-                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                 "Host": "www.juxiangyou.com",
-                 "Referer": "http://www.juxiangyou.com/fun/play/crazy28/jctz?id=" + vote_current,
+                 "Content-Type": "application/x-www-form-urlencoded",
+                 "Host": "www.youzhuan.com",
+                 "Referer": "http://www.youzhuan.com/jc/jsInsert.php?jsNO=" + vote_current,
                  "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)",
                  "X-Requested-With": "XMLHttpRequest"}
-    post_head['X-Sign'] = x_sign
-    # 服务器接受str格式，把字典格式json格式转化
-    a = json.dumps({"fun": "lottery", "c": "quiz", "items": "crazy28", "lssue": vote_current,
-                    "lotteryData": list_v})
-    # 毫秒级时间戳，同时作为postdata数据发现服务器
-    pst_data = {'jxy_parameter': a, 'timestamp': base_time}
-    url = 'http://www.juxiangyou.com/fun/play/interaction'
-    # Post数据服务器，cookies使用登录页面与验证码 合并cookies提交
-    if moni == 0:
-        try:
-            req = requests.post(url, data=pst_data, cookies=gol_cookies, headers=post_head,
+    url = 'http://www.youzhuan.com/jc/jsInsert.php?jsNO=' + vote_current
+    try:
+        url_1 = "http://www.youzhuan.com/jc/jsInsert.php?jsNO=" + vote_current
+        req_te = requests.get(url_1, cookies=gol_cookies, headers=get_head, allow_redirects=False, timeout=10)
+        a = {}
+        for index, bb in enumerate(list_v):
+            if bb > 0:
+                a['tbChk[' + str(index) + ']'] = 'on'
+        a['tbModelID'] = ''
+        for index, bb in enumerate(list_v):
+            if bb > 0:
+                a['tbNum[' + str(index) + ']'] = bb
+            else:
+                a['tbNum[' + str(index) + ']'] = ''
+        gol_cookies['cGlobal[last]'] = str(int(time.time()))
+        if moni == 0:
+            req = requests.post(url, data=a, cookies=gol_cookies, headers=post_head,
                                 allow_redirects=False, timeout=10)
-            # print('打印投注返回信息:', req.text)
-            vote_status = (json.loads(req.text))['code']
-            if vote_status == 10000:
+            # print('打印投注返回信息:', req.content)
+            html=req.text.encode('ISO-8859-1').decode(requests.utils.get_encodings_from_content(req.text)[0])
+            if html.find('投注成功') > 0:
                 for x in range(0, 28):
-                    if list_v[x] >= list_num[x]:
+                    if int(list_v[x]) >= list_num[x]:
                         return_list.append(x)
                 return_list.append(vote_current.strip())
-                print(vote_current, '真实，投注成功购买的列表是', return_list)
+                print(vote_current, '真实,投注成功购买的列表是', return_list)
                 return return_list
             else:
                 print(vote_current, '投注失败，购买的列表是空')
                 return []
-        except Exception as e:
-            print('出错，购买的列表是空')
-            return []
-    else:
-        for x in range(0, 28):
-            if list_v[x] >= list_num[x]:
-                return_list.append(x)
-        return_list.append(vote_current.strip())
-        print(vote_current, '模拟，投注成功购买的列表是', return_list)
-        return return_list
+        else:
+            for x in range(0, 28):
+                if int(list_v[x]) >= list_num[x]:
+                    return_list.append(x)
+            return_list.append(vote_current.strip())
+            print(vote_current, '模拟，投注成功购买的列表是', return_list)
+            f = open('touzhu_jilu.txt', 'a+')
+            f.write(vote_current.strip() + "期，投注+1\n")
+            f.close()
+            return return_list
+    except Exception as e:
+        if moni == 0:
+            f.write(req.text)
+        f.close()
+        print('出错，购买的列表是空')
+        return []
 
 
 if __name__ == '__main__':

@@ -1,22 +1,42 @@
 # -*- coding: utf-8 -*-
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
-import sys, requests
-
-gol_cookies = ''
+import sys, requests,time,json
+import server_jxy
+jxy_login_cookies=''
+jxy_gol_cookies = ''
 
 
 class Ui_MainWindow(object):
     def __init__(self):
-        self.jxy_get_header = {
+        super(Ui_MainWindow, self).__init__()
+        self.get_header = {
             "Accept": "text/html, application/xhtml+xml, */*",
             "Accept-Encoding": "gzip, deflate",
             "Accept-Language": "zh-CN",
             "Connection": "Keep-Alive",
-            "Host": "www.juxiangyou.com",
-            "Referer": "http://www.juxiangyou.com/",
+            "Host": "",
+            "Referer": "",
             "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64;Trident/5.0)"
         }
+        self.post_header = {"Accept": "application/json, text/javascript, */*",
+                            "Accept-Encoding": "gzip, deflate",
+                            "Accept-Language": "zh-cn",
+                            "Cache-Control": "no-cache",
+                            "Connection": "Keep-Alive",
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            "Host": "",
+                            "Referer": "",
+                            "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)",
+                            "X-Requested-With": "XMLHttpRequest"}
+        self.jxy_get_header = self.get_header.copy()
+        self.jxy_get_header['Host'] = "www.juxiangyou.com"
+        self.jxy_get_header['Referer'] = "http://www.juxiangyou.com/"
+        self.t1 = submit()
+        self.t1.up_jxy_vali.connect(self.show_jxy_vali)
+        self.t1.jxy_submit(self.jxy_get_header,'','','','vali')
+
+
 
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
@@ -45,6 +65,7 @@ class Ui_MainWindow(object):
         self.gridLayout.addWidget(self.jxy_lineEdit_name, 0, 1, 1, 1)
         self.jxy_pb = QtWidgets.QPushButton(self.widget)
         self.jxy_pb.setObjectName("jxy_pb")
+        self.jxy_pb.clicked.connect(self.jxy_submit)
         self.gridLayout.addWidget(self.jxy_pb, 0, 2, 3, 1)
         self.label_2 = QtWidgets.QLabel(self.widget)
         self.label_2.setObjectName("label_2")
@@ -52,15 +73,24 @@ class Ui_MainWindow(object):
         self.jxy_lineEdit_pwd = QtWidgets.QLineEdit(self.widget)
         self.jxy_lineEdit_pwd.setObjectName("jxy_lineEdit_pwd")
         self.gridLayout.addWidget(self.jxy_lineEdit_pwd, 1, 1, 1, 1)
+        # self.label_3 = QtWidgets.QLabel(self.widget)
+        # self.label_3.setObjectName("label_3")
+        # self.gridLayout.addWidget(self.label_3, 2, 0, 1, 1)
+        # ----------------------------------
+        self.jxy_logo_lable = QtWidgets.QLabel(self.widget)
+        self.jxy_logo_lable.setObjectName("jxy_logo_lable")
+        self.jxy_logo_lable.setPixmap(self.photo)
+        self.gridLayout.addWidget(self.jxy_logo_lable, 2, 0, 1, 2)
         self.label_3 = QtWidgets.QLabel(self.widget)
         self.label_3.setObjectName("label_3")
-        self.gridLayout.addWidget(self.label_3, 2, 0, 1, 1)
-        self.lineEdit_3 = QtWidgets.QLineEdit(self.widget)
-        self.lineEdit_3.setObjectName("lineEdit_3")
-        self.gridLayout.addWidget(self.lineEdit_3, 2, 1, 1, 1)
+        self.gridLayout.addWidget(self.label_3, 3, 0, 1, 1)
+        self.jxy_lineEdit_vali = QtWidgets.QLineEdit(self.widget)
+        self.jxy_lineEdit_vali.setObjectName("jxy_lineEdit_vali")
+        self.gridLayout.addWidget(self.jxy_lineEdit_vali, 3, 1, 1, 1)
+        # --------------------------------------------
         self.jxy_dt_list = QtWidgets.QListWidget(self.widget)
         self.jxy_dt_list.setObjectName("jxy_dt_list")
-        self.gridLayout.addWidget(self.jxy_dt_list, 3, 0, 1, 3)
+        self.gridLayout.addWidget(self.jxy_dt_list, 4, 0, 1, 3)
         self.tabWidget.addTab(self.tab, "")
         self.tab_2 = QtWidgets.QWidget()
         self.tab_2.setStyleSheet("background-image: url(:/newPrefix/images/lezhuan.png);")
@@ -245,16 +275,63 @@ class Ui_MainWindow(object):
         self.label_15.setText(_translate("MainWindow", "验证码："))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_5), _translate("MainWindow", "Pceggs"))
 
+    def show_jxy_vali(self, data):
+        tempphoto = QtGui.QPixmap()
+        tempphoto.loadFromData(data)
+        self.photo=tempphoto.scaled(tempphoto.width()/1.3,tempphoto.height()/1.3)
+    def jxy_submit(self):
+        jxy_post_header = self.post_header.copy()
+        jxy_post_header['Host']="www.juxiangyou.com"
+        jxy_post_header['Referer']="http://www.juxiangyou.com/login/index"
+        name=self.jxy_lineEdit_name.text().strip()
+        password="xfcctv1983"
+        vali=self.jxy_lineEdit_vali.text().strip()
+        self.t2=submit()
+        self.t2.jxy_submit(jxy_post_header,name,password,vali,"login")
+        self.t2.start()
+
+
+
 
 class submit(QThread):
+    up_jxy_vali = pyqtSignal(bytes)
+
     def __init__(self):
         # 创建一个网站表示，根据不同的表示多线程运行的代码不同
+        super(submit, self).__init__()
         self.siteflag = 0
         pass
 
-    def jxy_submit(self):
+    def jxy_submit(self, header,name,password,vali,type):
+        global jxy_gol_cookies
+        global jxy_login_cookies
         self.siteflag = 1
-        pass
+        if type == "vali":
+            url_1 = 'http://www.juxiangyou.com/login/index'
+            req_1 = requests.get(url_1, headers=header)
+            url_2 = 'http://www.juxiangyou.com/verify'
+            req_2 = requests.get(url_2, headers=header, cookies=req_1.cookies)
+            req_2.cookies.update(req_1.cookies)
+            jxy_login_cookies = req_2.cookies
+            self.up_jxy_vali.emit(req_2.content)
+        elif type == "login":
+            base_time = int(time.time()) * 1000
+            x_sign = baseN(base_time, 36)
+            header['X-Sign'] = x_sign
+            a = json.dumps({"c": "index", "fun": "login", "account": name,
+                            "password": 'xfcctv1983',
+                            "verificat_code": vali,
+                            "is_auto": 'false'})
+            # 毫秒级时间戳，同时作为postdata数据发现服务器
+            pst_data = {'jxy_parameter': a, 'timestamp': base_time}
+            url = 'http://www.juxiangyou.com/login/auth'
+            req = requests.post(url, data=pst_data, cookies=jxy_login_cookies, headers=header,
+                                allow_redirects=False)
+            print(req.text)
+            if req.text.find('10000') > 0:
+                jxy_gol_cookies = req.cookies
+                print('登录成功')
+                self.jxy_xh=server_jxy.jxy_all()
 
     def lezhuan_submit(self):
         self.siteflag = 2
@@ -272,9 +349,15 @@ class submit(QThread):
         pass
 
     def run(self):
-        global gol_cookies
-        pass
+        global jxy_gol_cookies
+        if self.siteflag==1:
+            self.jxy_xh.xunhuan(jxy_gol_cookies)
 
+
+
+def baseN(num, b):
+    return ((num == 0) and "0") or (
+        baseN(num // b, b).lstrip("0") + "0123456789abcdefghijklmnopqrstuvwxyz"[num % b])
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
